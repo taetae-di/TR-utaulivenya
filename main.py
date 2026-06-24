@@ -195,27 +195,23 @@ async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
         except discord.Forbidden: 
             pass
 
-# ⏰ 알람 발송 함수 (오전 7시 ~ 익일 오전 3시 사이의 홀수 시간대만 발송 / 오전 5시 제외)
+# ⏰ 알람 발송 함수 (지정된 홀수 시간대 발송 + 서버에 존재하는 멤버만 필터링)
 async def send_alarm():
     current_hour = datetime.now().hour
     
-    # 1. [짝수 필터] 짝수 시간대는 아예 들어오지 못하도록 완전히 차단
-    if current_hour % 2 == 0:
+    # 🎯 [화이트리스트 시간 설정]
+    allowed_hours = [7, 9, 11, 13, 15, 17, 19, 21, 23, 1, 3]
+    if current_hour not in allowed_hours:
         return
         
-    # 2. [시간대 및 예외 필터] 아침 4시, 5시, 6시는 알람을 보내지 않고 건너뜁니다.
-    # (오전 7시부터 시작해서 익일 오전 3시까지 유효하며, 오전 5시는 강제 제외되므로)
-    if current_hour in [4, 5, 6]:
-        return
-        
-    # 3. 알람 신청 유저가 없으면 패스
+    # 알람 신청 유저가 없으면 패스
     if not alarm_users: 
         return
 
     now = datetime.now()
     active_mentions = []
 
-    # 4. 면제자 유저 필터링 로직
+    # 1. 면제자 유저 필터링 로직 (시간 기준)
     for user_id in alarm_users:
         is_exempt = False
         if user_id in exempt_users:
@@ -226,7 +222,7 @@ async def send_alarm():
         if not is_exempt:
             active_mentions.append(user_id)
 
-    # 5. 면제 시간이 지난 유저들 명단 사후 정리
+    # 면제 시간이 지난 유저들 명단 사후 정리
     for uid in list(exempt_users.keys()):
         if now >= datetime.strptime(exempt_users[uid], "%Y-%m-%d %H:%M:%S"):
             del exempt_users[uid]
@@ -235,15 +231,37 @@ async def send_alarm():
     if not active_mentions: 
         return
 
-    # 6. 설정된 모든 서버의 알람 채널을 돌며 멘션 발송
+    # 2. 설정된 모든 서버의 알람 채널을 돌며 멘션 발송
     for guild_id, channels in server_channels.items():
         alarm_channel_id = channels.get("alarm")
-        if alarm_channel_id:
-            alarm_channel = bot.get_channel(int(alarm_channel_id))
-            if alarm_channel:
-                mentions = " ".join([f"<@{uid}>" for uid in active_mentions])
-                await alarm_channel.send(f"{mentions} 세라 라이브 들어갈 시간입니다!")
-                print(f"[{datetime.now()}] 서버({guild_id})의 {current_hour}시 알람 발송 완료")
+        if not alarm_channel_id:
+            continue
+            
+        # 디스코드에서 해당 서버(Guild) 객체 가져오기
+        guild = bot.get_guild(int(guild_id))
+        if not guild:
+            continue
+
+        alarm_channel = bot.get_channel(int(alarm_channel_id))
+        if not alarm_channel:
+            continue
+
+        # 🔥 [핵심 수정] 현재 서버의 멤버 목록을 확인하여, 실제로 존재하는 멤버만 골라냅니다.
+        # guild.get_member(int(uid))를 쓰기 위해 앞서 설정한 SERVER MEMBERS INTENT가 활성화되어 있어야 합니다.
+        real_server_members = []
+        for uid in active_mentions:
+            member = guild.get_member(int(uid))
+            if member: # 서버에 실제로 존재하는 유저라면 목록에 추가
+                real_server_members.append(uid)
+
+        # 해당 서버에 멘션할 유저가 한 명도 없다면 이 서버는 발송을 건너뜁니다.
+        if not real_server_members:
+            continue
+
+        # 실제 존재하는 유저들만 멘션 문자열로 조합
+        mentions = " ".join([f"<@{uid}>" for uid in real_server_members])
+        await alarm_channel.send(f"{mentions} 세라 라이브 들어갈 시간입니다!")
+        print(f"[{datetime.now()}] 서버({guild_id})의 {current_hour}시 알람 발송 완료 (실제 멘션: {len(real_server_members)}명)")
 
 keep_alive()
 bot.run(TOKEN)
