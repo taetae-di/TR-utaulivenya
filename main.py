@@ -1,4 +1,5 @@
 import discord
+import pytz
 from discord.ext import commands
 from discord import app_commands
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -181,7 +182,7 @@ async def on_ready():
         print(f"Command sync error: {e}")
 
     if not scheduler.running:
-        scheduler.add_job(send_alarm, "cron", minute=0, second=0)
+        scheduler.add_job(send_alarm, "cron", minute=0, second=0, timezone="Asia/Seoul")
         scheduler.start()
 
 
@@ -210,17 +211,17 @@ async def setup_recruit_channel(interaction: discord.Interaction, channel: disco
 
 # ⏰ [알람 발송 함수]
 async def send_alarm():
-    current_hour = datetime.now().hour
+    seoul_zone = pytz.timezone("Asia/Seoul")
+    current_time_seoul = datetime.now(seoul_zone)
+    current_hour = current_time_seoul.hour
 
-    # 새벽 1시(1), 새벽 3시(3), 오전 7시, 9시, 11시, 오후 1시(13), 3시(15), 5시(17), 7시(19), 9시(21), 11시(23)
-    # ❌ 새벽 2시, 새벽 5시 등은 여기에 없으므로 절대 발송되지 않습니다.
     allowed_hours = [1, 3, 7, 9, 11, 13, 15, 17, 19, 21, 23]
-    
+
     if current_hour not in allowed_hours:
         return
 
     alarm_users = db_get_alarm_users()
-    if not alarm_users: 
+    if not alarm_users:
         return
 
     now = datetime.now()
