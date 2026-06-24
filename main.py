@@ -114,6 +114,7 @@ async def on_ready():
     print(f"Logged in as {bot.user.name}")
     load_data()
     bot.add_view(AlarmView())
+    bot.add_view(AlarmExemptView())
     
     try:
         # 1. 여기에 동기화하고 싶은 서버 ID들을 쉼표(,)로 구분해서 모두 적어줍니다.
@@ -167,43 +168,47 @@ async def setup_recruit_channel(interaction: discord.Interaction, channel: disco
         view=AlarmView()
     )
 
-# 📥 [이모지 반응 감지 이벤트]
-@bot.event
-async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
-    if user.bot: 
-        return
-        
-    # 🌟 [핵심 수정] 이모지가 달린 메시지의 작성자가 '이 봇(자신)'일 때만 카운트합니다.
-    if reaction.message.author.id != bot.user.id:
-        return
+# --------------------------------------------------------
+# 🔘 [변경] 알람 제외 버튼 클래스 (완벽한 시크릿 메시지)
+# --------------------------------------------------------
+class AlarmExemptView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None) # 24시간 버튼 구조 유지
 
-    user_id = str(user.id)
-    
-    # 이모지 누적 카운트 증가
-    user_reaction_counts[user_id] = user_reaction_counts.get(user_id, 0) + 1
-    
-    # 2번 참여 시 면제 처리
-    if user_reaction_counts[user_id] == 2:
+    @discord.ui.button(label="오늘 알람 제외하기 ❌", style=discord.ButtonStyle.danger, custom_id="exempt_today_btn")
+    async def exempt_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        user_id = str(interaction.user.id)
+        
+        # 🎯 당일 오후 11시 59분 59초 기준 시간 계산
         now = datetime.now()
-        tomorrow = now + timedelta(days=1)
-        exempt_until = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 6, 59, 59)
+        exempt_until = datetime(now.year, now.month, now.day, 23, 59, 59)
+        
+        # 이미 당일 밤 11시 59분이 지난 새벽 시간대 예외 처리
+        if now > exempt_until:
+            exempt_until += timedelta(days=1)
+            
+        # 면제자 명단에 등록 후 물리 파일 저장
         exempt_users[user_id] = exempt_until.strftime("%Y-%m-%d %H:%M:%S")
         save_exempt_data()
         
-        try:
-            await user.send(f"🎉 봇 알람 메시지에 이모지로 2번 참여하셨습니다! 내일 오전 6시 59분까지 라이브 알람 멘션에서 제외됩니다.")
-        except discord.Forbidden: 
-            pass
+        # 🤫 ephemeral=True 옵션으로 '누른 사람에게만 보이는' 완벽한 시크릿 메시지 발송
+        await interaction.response.send_message(
+            f"🎉 알람 제외 처리가 완료되었습니다!\n"
+            f"**오늘 오후 11시 59분**까지 라이브 알람 멘션에서 제외되며, 자정 이후 다음 날 아침부터 다시 정상 작동합니다.",
+            ephemeral=True
+        )
 
-# ⏰ 알람 발송 함수 (지정된 홀수 시간대 발송 + 서버에 존재하는 멤버만 필터링)
+# --------------------------------------------------------
+# ⏰ 알람 발송 함수 (지정된 홀수 시간대 발송 + 서버에 존재하는 멤버만 필터링 + 버튼 장착)
+# --------------------------------------------------------
 async def send_alarm():
     current_hour = datetime.now().hour
-    
-    # 🎯 [화이트리스트 시간 설정]
+
+    # 🎯 [화이트리스트 시간 설정] 딱 이 홀수 시간대에만 발송 허용
     allowed_hours = [7, 9, 11, 13, 15, 17, 19, 21, 23, 1, 3]
     if current_hour not in allowed_hours:
         return
-        
+
     # 알람 신청 유저가 없으면 패스
     if not alarm_users: 
         return
@@ -218,11 +223,11 @@ async def send_alarm():
             exempt_time = datetime.strptime(exempt_users[user_id], "%Y-%m-%d %H:%M:%S")
             if now < exempt_time:
                 is_exempt = True
-                
+
         if not is_exempt:
             active_mentions.append(user_id)
 
-    # 면제 시간이 지난 유저들 명단 사후 정리
+    # 면제 시간이 지난 유저들 명단 사후 정리 (오후 11시 59분이 지나 자정이 되면 자동 삭제)
     for uid in list(exempt_users.keys()):
         if now >= datetime.strptime(exempt_users[uid], "%Y-%m-%d %H:%M:%S"):
             del exempt_users[uid]
@@ -236,7 +241,7 @@ async def send_alarm():
         alarm_channel_id = channels.get("alarm")
         if not alarm_channel_id:
             continue
-            
+
         # 디스코드에서 해당 서버(Guild) 객체 가져오기
         guild = bot.get_guild(int(guild_id))
         if not guild:
@@ -246,8 +251,7 @@ async def send_alarm():
         if not alarm_channel:
             continue
 
-        # 🔥 [핵심 수정] 현재 서버의 멤버 목록을 확인하여, 실제로 존재하는 멤버만 골라냅니다.
-        # guild.get_member(int(uid))를 쓰기 위해 앞서 설정한 SERVER MEMBERS INTENT가 활성화되어 있어야 합니다.
+        # 현재 서버의 멤버 목록을 확인하여, 실제로 존재하는 멤버만 골라내기
         real_server_members = []
         for uid in active_mentions:
             member = guild.get_member(int(uid))
@@ -260,8 +264,14 @@ async def send_alarm():
 
         # 실제 존재하는 유저들만 멘션 문자열로 조합
         mentions = " ".join([f"<@{uid}>" for uid in real_server_members])
-        await alarm_channel.send(f"{mentions} 세라 라이브 들어갈 시간입니다!")
-        print(f"[{datetime.now()}] 서버({guild_id})의 {current_hour}시 알람 발송 완료 (실제 멘션: {len(real_server_members)}명)")
+        
+        # 🌟 알람 메시지를 보낼 때 하단에 [오늘 알람 제외하기 ❌] 버튼을 장착해서 보냅니다.
+        view = AlarmExemptView()
+        await alarm_channel.send(
+            f"{mentions} 세라 라이브 들어갈 시간입니다!",
+            view=view
+        )
+        print(f"[{datetime.now()}] 서버({guild_id})의 {current_hour}시 버튼식 알람 발송 완료 (실제 멘션: {len(real_server_members)}명)")
 
 keep_alive()
 bot.run(TOKEN)
