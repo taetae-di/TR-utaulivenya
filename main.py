@@ -175,15 +175,26 @@ async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
             await user.send(f"🎉 이모지에 2번 참여하셨습니다! 내일 오전 6시 59분까지 라이브 알람 멘션에서 제외됩니다.")
         except discord.Forbidden: pass
 
-# ⏰ 알람 발송 함수
+# ⏰ 알람 발송 함수 (오전 7시 ~ 오후 3시 사이의 홀수 시간대만 발송)
 async def send_alarm():
     current_hour = datetime.now().hour
-    if current_hour % 2 == 0 or current_hour == 5: return
-    if not alarm_users: return
+    
+    # 1. [시간대 필터] 오전 7시부터 오후 3시(15시) 사이가 아니면 완전히 차단
+    if not (7 <= current_hour <= 15):
+        return
+        
+    # 2. [홀수 필터] 짝수 시간대이거나, 아침 5시(어차피 1번에서 걸러지지만 유지)이면 패스
+    if current_hour % 2 == 0 or current_hour == 5: 
+        return
+        
+    # 3. 알람 신청 유저가 없으면 패스
+    if not alarm_users: 
+        return
 
     now = datetime.now()
     active_mentions = []
 
+    # 4. 면제자 유저 필터링 로직
     for user_id in alarm_users:
         is_exempt = False
         if user_id in exempt_users:
@@ -191,14 +202,23 @@ async def send_alarm():
             if now < exempt_time:
                 is_exempt = True
             else:
-                del exempt_users[user_id]
-                save_exempt_data()
+                # 면제 시간이 지났으면 딕셔너리에서 삭제 후 저장
+                # (주의: 반복문 도중 del 사용 시 에러 방지를 위해 하단에서 지우는 것이 안전하나 기존 구조 유지)
+                pass 
+                
         if not is_exempt:
             active_mentions.append(user_id)
 
-    if not active_mentions: return
+    # 5. 면제 시간 지난 유저들 명단 사후 정리 (딕셔너리 변경 오류 방지 안전 장치)
+    for uid in list(exempt_users.keys()):
+        if now >= datetime.strptime(exempt_users[uid], "%Y-%m-%d %H:%M:%S"):
+            del exempt_users[uid]
+    save_exempt_data()
 
-    # 설정된 모든 서버의 알람 채널을 돌며 멘션 발송
+    if not active_mentions: 
+        return
+
+    # 6. 설정된 모든 서버의 알람 채널을 돌며 멘션 발송
     for guild_id, channels in server_channels.items():
         alarm_channel_id = channels.get("alarm")
         if alarm_channel_id:
