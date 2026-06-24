@@ -31,8 +31,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 TOKEN = os.environ.get('DISCORD_TOKEN') # 래플릿 Secrets 환경변수 사용
 
 # 🛠️ [채널 ID 설정] 본인 서버의 채널 ID로 각각 수정해 주세요!
-RECRUIT_CHANNEL_ID = 1487560087890297002  # "링크공유" 채널 ID (모집 버튼이 올라갈 곳)
-ALARM_CHANNEL_ID = 1519281328766455959    # "알림" 채널 ID (실제 알람 멘션이 갈 곳)
+RECRUIT_CHANNEL_ID = 1487560087890297002, 1409900573331030058  # "링크공유" 채널 ID (모집 버튼이 올라갈 곳)
+ALARM_CHANNEL_ID = 1519281328766455959, 1489102073185308752    # "알림" 채널 ID (실제 알람 멘션이 갈 곳)
 
 DATA_FILE = "alarm_users.json"
 alarm_users = set()
@@ -86,36 +86,32 @@ async def on_ready():
     load_data()
     bot.add_view(AlarmView())
     
-    # 1. "일반" 채널에 알람 모집 버튼 메시지 발송
-    recruit_channel = bot.get_channel(RECRUIT_CHANNEL_ID)
-    if recruit_channel:
-        await recruit_channel.send(
-            "🔔 **[세라 라이브 알람 신청]**\n아래 버튼을 눌러 알람 명단에 등록하거나 취소할 수 있습니다!",
-            view=AlarmView()
-        )
+    # 등록된 모든 모집 채널에 순래대로 버튼 메시지 발송
+    for channel_id in RECRUIT_CHANNEL_IDS:
+        recruit_channel = bot.get_channel(channel_id)
+        if recruit_channel:
+            await recruit_channel.send(
+                "🔔 **[세라 라이브 알람 신청]**\n아래 버튼을 눌러 알람 명단에 등록하거나 취소할 수 있습니다!",
+                view=AlarmView()
+            )
 
     if not scheduler.running:
         scheduler.add_job(send_alarm, "cron", minute=0, second=0)
         scheduler.start()
 
-# ⏰ 알람 발송 함수
 async def send_alarm():
     current_hour = datetime.now().hour
-    
-    # 짝수 시간이거나 새벽 5시라면 패스
     if current_hour % 2 == 0 or current_hour == 5:
         return
-
-    # 신청 유저가 없다면 패스
     if not alarm_users:
         return
         
-    # 2. "시간표" 채널에 실제 알람 멘션 발송
-    alarm_channel = bot.get_channel(ALARM_CHANNEL_ID)
-    if alarm_channel:
-        mentions = " ".join([f"<@{user_id}>" for user_id in alarm_users])
-        await alarm_channel.send(f"{mentions} 세라 라이브 들어갈 시간입니다!")
-        print(f"[{datetime.now()}] {current_hour}시 알람 발송 완료 (대상: {len(alarm_users)}명)")
+    # 등록된 모든 알람 채널에 순서대로 알람 발송
+    for channel_id in ALARM_CHANNEL_IDS:
+        alarm_channel = bot.get_channel(channel_id)
+        if alarm_channel:
+            mentions = " ".join([f"<@{user_id}>" for user_id in alarm_users])
+            await alarm_channel.send(f"{mentions} 세라 라이브 들어갈 시간입니다!")
 
 keep_alive()
 bot.run(TOKEN)
