@@ -212,8 +212,10 @@ async def setup_recruit_channel(interaction: discord.Interaction, channel: disco
 async def send_alarm():
     current_hour = datetime.now().hour
 
-    # 홀수 시간대 체크 (새벽 5시 차단)
-    allowed_hours = [7, 9, 11, 13, 15, 17, 19, 21, 23, 1, 3]
+    # 새벽 1시(1), 새벽 3시(3), 오전 7시, 9시, 11시, 오후 1시(13), 3시(15), 5시(17), 7시(19), 9시(21), 11시(23)
+    # ❌ 새벽 2시, 새벽 5시 등은 여기에 없으므로 절대 발송되지 않습니다.
+    allowed_hours = [1, 3, 7, 9, 11, 13, 15, 17, 19, 21, 23]
+    
     if current_hour not in allowed_hours:
         return
 
