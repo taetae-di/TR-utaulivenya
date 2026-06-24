@@ -115,14 +115,20 @@ async def on_ready():
     load_data()
     bot.add_view(AlarmView())
     
-    # 슬래시 명령어를 디스코드 서버에 동기화
     try:
-        # 여기에 방금 복사한 내 디스코드 서버 ID 숫자를 적어줍니다 (따옴표 필수)
-        MY_GUILD = discord.Object(id="1487482092983025744") 
+        # 1. 여기에 동기화하고 싶은 서버 ID들을 쉼표(,)로 구분해서 모두 적어줍니다.
+        guild_ids = [
+            "1487482092983025744",  # 기존 첫 번째 서버 ID
+            "1409900572168949772"   # 새로 추가할 두 번째 서버 ID
+        ]
         
-        bot.tree.copy_global_to(guild=MY_GUILD)
-        synced = await bot.tree.sync(guild=MY_GUILD)
-        print(f"내 서버에 즉시 동기화 완료: {len(synced)}개 명령어")
+        # 2. 적어준 서버 목록을 돌면서 명령어를 하나씩 주입합니다.
+        for guild_id in guild_ids:
+            guild_obj = discord.Object(id=guild_id)
+            bot.tree.copy_global_to(guild=guild_obj)
+            synced = await bot.tree.sync(guild=guild_obj)
+            print(f"[서버 {guild_id}]에 즉시 동기화 완료: {len(synced)}개 명령어")
+            
     except Exception as e:
         print(f"Command sync error: {e}")
 
