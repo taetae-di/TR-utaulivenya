@@ -95,13 +95,22 @@ async def on_ready():
 
 async def send_alarm():
     current_hour = datetime.now().hour
-    if current_hour % 2 == 1:
-        channel = bot.get_channel(CHANNEL_ID)
-        if not alarm_users:
-            return
-        if channel:
-            mentions = " ".join([f"<@{user_id}>" for user_id in alarm_users])
-            await channel.send(f"{mentions} 세라 라이브 들어갈 시간입니다!")
+    
+    # 1. 짝수 시간이거나 새벽 5시라면 아무것도 하지 않고 즉시 종료 (콘솔 로그도 없음)
+    if current_hour % 2 == 0 or current_hour == 5:
+        return
+
+    # 2. 알람 대상 유저가 없다면 종료 (콘솔 로그 기록)
+    if not alarm_users:
+        print(f"[{datetime.now()}] {current_hour}시: 신청한 유저가 없어 알람을 건너뜁니다.")
+        return
+        
+    # 3. 조건에 맞는 홀수 시간에만 디스코드 알람 발송 및 로그 기록
+    channel = bot.get_channel(CHANNEL_ID)
+    if channel:
+        mentions = " ".join([f"<@{user_id}>" for user_id in alarm_users])
+        await channel.send(f"{mentions} 세라 라이브 들어갈 시간입니다!")
+        print(f"[{datetime.now()}] {current_hour}시 알람 발송 완료 (대상: {len(alarm_users)}명)")
 
 keep_alive()
 bot.run(TOKEN)
