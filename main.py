@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-from apscheduler.schedulers.asyncio import AsyncioScheduler
+from apscheduler.schedulers.asyncio import AsyncIoScheduler
 from datetime import datetime, timedelta
 import os
 from flask import Flask
@@ -37,7 +37,7 @@ SUPABASE_KEY = os.environ.get('SUPABASE_KEY')
 # Supabase 클라이언트 초기화
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-scheduler = AsyncioScheduler(timezone="Asia/Seoul")
+scheduler = AsyncIoScheduler(timezone="Asia/Seoul")
 
 # --- [Supabase 전용 데이터 조작 함수 정의] ---
 
