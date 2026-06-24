@@ -117,8 +117,12 @@ async def on_ready():
     
     # 슬래시 명령어를 디스코드 서버에 동기화
     try:
-        synced = await bot.tree.sync()
-        print(f"Synced {len(synced)} command(s)")
+        # 여기에 방금 복사한 내 디스코드 서버 ID 숫자를 적어줍니다 (따옴표 필수)
+        MY_GUILD = discord.Object(id="1487482092983025744") 
+        
+        bot.tree.copy_global_to(guild=MY_GUILD)
+        synced = await bot.tree.sync(guild=MY_GUILD)
+        print(f"내 서버에 즉시 동기화 완료: {len(synced)}개 명령어")
     except Exception as e:
         print(f"Command sync error: {e}")
 
