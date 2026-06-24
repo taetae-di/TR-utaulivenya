@@ -31,8 +31,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 TOKEN = os.environ.get('DISCORD_TOKEN') # 래플릿 Secrets 환경변수 사용
 
 # 🛠️ [채널 ID 설정] 본인 서버의 채널 ID로 각각 수정해 주세요!
-RECRUIT_CHANNEL_ID = 1409900573331030058  # "일반" 채널 ID (모집 버튼이 올라갈 곳)
-ALARM_CHANNEL_ID = 1489102073185308752    # "시간표" 채널 ID (실제 알람 멘션이 갈 곳)
+RECRUIT_CHANNEL_ID = 1487560087890297002  # "링크공유" 채널 ID (모집 버튼이 올라갈 곳)
+ALARM_CHANNEL_ID = 1519281328766455959    # "알림" 채널 ID (실제 알람 멘션이 갈 곳)
 
 DATA_FILE = "alarm_users.json"
 alarm_users = set()
