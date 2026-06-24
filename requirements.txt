@@ -2,3 +2,4 @@ discord.py
 apscheduler
 Flask
 supabase
+pytz
