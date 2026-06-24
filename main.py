@@ -170,20 +170,30 @@ async def setup_recruit_channel(interaction: discord.Interaction, channel: disco
 # 📥 [이모지 반응 감지 이벤트]
 @bot.event
 async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
-    if user.bot: return
+    if user.bot: 
+        return
+        
+    # 🌟 [핵심 수정] 이모지가 달린 메시지의 작성자가 '이 봇(자신)'일 때만 카운트합니다.
+    if reaction.message.author.id != bot.user.id:
+        return
+
     user_id = str(user.id)
     
+    # 이모지 누적 카운트 증가
     user_reaction_counts[user_id] = user_reaction_counts.get(user_id, 0) + 1
     
+    # 2번 참여 시 면제 처리
     if user_reaction_counts[user_id] == 2:
         now = datetime.now()
         tomorrow = now + timedelta(days=1)
         exempt_until = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 6, 59, 59)
         exempt_users[user_id] = exempt_until.strftime("%Y-%m-%d %H:%M:%S")
         save_exempt_data()
+        
         try:
-            await user.send(f"🎉 이모지에 2번 참여하셨습니다! 내일 오전 6시 59분까지 라이브 알람 멘션에서 제외됩니다.")
-        except discord.Forbidden: pass
+            await user.send(f"🎉 봇 알람 메시지에 이모지로 2번 참여하셨습니다! 내일 오전 6시 59분까지 라이브 알람 멘션에서 제외됩니다.")
+        except discord.Forbidden: 
+            pass
 
 # ⏰ 알람 발송 함수 (오전 7시 ~ 익일 오전 3시 사이의 홀수 시간대만 발송 / 오전 5시 제외)
 async def send_alarm():
