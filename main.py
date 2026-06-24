@@ -280,6 +280,7 @@ async def send_alarm():
             view=view
         )
         print(f"[{datetime.now()}] 서버({guild_id})의 {current_hour}시 버튼식 알람 발송 완료 (실제 멘션: {len(real_server_members)}명)")
+        ## 테스트용
 
 keep_alive()
 bot.run(TOKEN)
