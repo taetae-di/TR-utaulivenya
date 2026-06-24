@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-from apscheduler.schedulers.asyncio import AsyncioScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from datetime import datetime, timedelta
 import json
 import os
@@ -42,7 +42,7 @@ alarm_users = set()
 exempt_users = {}  # { "유저ID": "면제만료시간(YYYY-MM-DD THH:MM:SS)" }
 user_reaction_counts = {}  # 임시 당일 이모지 카운트 { "유저ID": 카운트숫자 }
 
-scheduler = AsyncioScheduler(timezone="Asia/Seoul")
+scheduler = AsyncIOScheduler(timezone="Asia/Seoul")
 
 def load_data():
     global alarm_users, exempt_users
