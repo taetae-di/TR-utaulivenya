@@ -182,7 +182,8 @@ async def on_ready():
         print(f"Command sync error: {e}")
 
     if not scheduler.running:
-        scheduler.add_job(send_alarm, "cron", minute=0, second=0, timezone="Asia/Seoul")
+        scheduler.add_job(send_alarm, "cron", hour="*", minute=0, second=0, timezone="Asia/Seoul")
+        scheduler.add_job(send_alarm, "cron", hour=0, minute=10, second=0, timezone="Asia/Seoul")
         scheduler.start()
 
 
