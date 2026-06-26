@@ -211,14 +211,27 @@ async def setup_recruit_channel(interaction: discord.Interaction, channel: disco
 
 # ⏰ [알람 발송 함수]
 async def send_alarm():
+    # 1. 현재 시간을 서울 시간대로 가져오기
     seoul_zone = pytz.timezone("Asia/Seoul")
     current_time_seoul = datetime.now(seoul_zone)
     current_hour = current_time_seoul.hour
+    current_minute = current_time_seoul.minute
 
-    allowed_hours = [1, 3, 7, 9, 11, 13, 15, 17, 19, 21, 23]
-
-    if current_hour not in allowed_hours:
+    # [필터 1] 새벽 5시는 무조건 알람 제외 (즉시 종료)
+    if current_hour == 5:
         return
+
+    # [필터 2] 00시 정각(0분)에 스케줄러가 깨운 것은 패스
+    if current_hour == 0 and current_minute == 0:
+        return
+
+    # ✨ [추가] 매일 밤 00시 10분에 알람을 보낸 후(또는 보내기 전) DB 자동 초기화 로직
+    if current_hour == 0 and current_minute == 10:
+        try:
+            # 수파베이스의 alarm_users 테이블에 있는 모든 데이터를 조용히 삭제합니다.
+            supabase.table("alarm_users").delete().neq("user_id", "0").execute()
+        except Exception as e:
+            pass
 
     alarm_users = db_get_alarm_users()
     if not alarm_users:
