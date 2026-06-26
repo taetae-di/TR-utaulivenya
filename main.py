@@ -229,8 +229,8 @@ async def send_alarm():
     # ✨ [추가] 매일 밤 00시 10분에 알람을 보낸 후(또는 보내기 전) DB 자동 초기화 로직
     if current_hour == 0 and current_minute == 10:
         try:
-            # 수파베이스의 alarm_users 테이블에 있는 모든 데이터를 조용히 삭제합니다.
-            supabase.table("alarm_users").delete().neq("user_id", "0").execute()
+            # 수파베이스의 exempt_users 테이블에 있는 모든 데이터를 조용히 삭제합니다.
+            supabase.table("exempt_users").delete().neq("user_id", "0").execute()
         except Exception as e:
             pass
 
@@ -263,6 +263,10 @@ async def send_alarm():
 
     server_channels = db_get_server_channels()
 
+    # ✨ [중복 방지 핵심 1] 이미 알람이 발송된 유저 ID를 기억할 빈 방(Set) 생성
+    # 서버들을 순회하기 전에 한 번만 선언해야 모든 서버 통틀어 1번만 발송됩니다.
+    sent_user_ids = set()
+
     # 3. 각 서버별 순회하며 멘션 발송
     for guild_id, channels in server_channels.items():
         alarm_channel_id = channels.get("alarm")
@@ -277,12 +281,18 @@ async def send_alarm():
         if not alarm_channel:
             continue
 
-        # 해당 서버에 실존하는 멤버인지 한 번 더 교차 검증
+        # 해당 서버에 실존하는 멤버인지 한 번 더 교차 검증 및 중복 필터링
         real_server_members = []
         for uid in active_mentions:
+            # ✨ [중복 방지 핵심 2] 이미 이전 서버에서 알람이 나간 유저라면 패스!
+            if uid in sent_user_ids:
+                continue
+
             member = guild.get_member(int(uid))
             if member: 
                 real_server_members.append(uid)
+                # 🚀 [기록] 알람 발송 명단에 추가했으므로 방에 유저 ID 저장!
+                sent_user_ids.add(uid)
 
         if not real_server_members:
             continue
@@ -295,7 +305,6 @@ async def send_alarm():
             view=view
         )
         print(f"[{datetime.now()}] 서버({guild_id})의 {current_hour}시 버튼식 알람 발송 완료 (실제 멘션: {len(real_server_members)}명)")
-        ## 테스트용
 
 keep_alive()
 bot.run(TOKEN)
