@@ -218,8 +218,8 @@ async def send_alarm():
     current_hour = current_time_seoul.hour
     current_minute = current_time_seoul.minute
 
-    # [필터 1] 새벽 5시는 무조건 알람 제외 (즉시 종료)
-    if current_hour == 5:
+   # [필터 1] 새벽 4시, 5시, 6시는 무조건 알람 제외 (즉시 종료)
+    if current_hour in [4, 5, 6]:
         return
 
     # [필터 2] 00시 정각(0분)에 스케줄러가 깨운 것은 패스
