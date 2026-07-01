@@ -212,13 +212,13 @@ async def setup_recruit_channel(interaction: discord.Interaction, channel: disco
 
 # ⏰ [알람 발송 함수]
 async def send_alarm():
-    # 1. 현재 시간을 서울 시간대로 가져오기
+    # 1. 현재 시간을 서울 시간대로 명확히 가져오기
     seoul_zone = pytz.timezone("Asia/Seoul")
     current_time_seoul = datetime.now(seoul_zone)
     current_hour = current_time_seoul.hour
     current_minute = current_time_seoul.minute
 
-   # [필터 1] 새벽 4시, 5시, 6시는 무조건 알람 제외 (즉시 종료)
+    # [필터 1] 새벽 4, 5, 6시는 무조건 알람 제외 (즉시 종료)
     if current_hour in [4, 5, 6]:
         return
 
@@ -226,19 +226,14 @@ async def send_alarm():
     if current_hour == 0 and current_minute == 0:
         return
 
-    # ✨ [추가] 매일 밤 00시 10분에 알람을 보낸 후(또는 보내기 전) DB 자동 초기화 로직
-    if current_hour == 0 and current_minute == 10:
-        try:
-            # 수파베이스의 exempt_users 테이블에 있는 모든 데이터를 조용히 삭제합니다.
-            supabase.table("exempt_users").delete().neq("user_id", "0").execute()
-        except Exception as e:
-            pass
+    # ✨ [수정] now 시계도 무조건 한국 시간(current_time_seoul) 기준으로 바인딩!
+    # 기존의 'now = datetime.now()' 구문을 지우고 아래처럼 서울 시간 시계로 대체합니다.
+    now = current_time_seoul
 
     alarm_users = db_get_alarm_users()
     if not alarm_users:
         return
 
-    now = datetime.now()
     exempt_users = db_get_exempt_users()
     active_mentions = []
 
@@ -246,25 +241,21 @@ async def send_alarm():
     for user_id in alarm_users:
         is_exempt = False
         if user_id in exempt_users:
-            exempt_time = datetime.strptime(exempt_users[user_id], "%Y-%m-%d %H:%M:%S")
+            # 면제 시간 문자열을 파이썬 시간 객체로 변환
+            exempt_time_naive = datetime.strptime(exempt_users[user_id], "%Y-%m-%d %H:%M:%S")
+            # ⚠️ 중요: 면제 시간 시계도 한국 시간대 정보(tzinfo)를 주입하여 비교 대상과 격을 맞춥니다.
+            exempt_time = seoul_zone.localize(exempt_time_naive)
+            
             if now < exempt_time:
                 is_exempt = True
 
         if not is_exempt:
             active_mentions.append(user_id)
 
-    # 2. 밤 11시 59분이 지나 유효시간이 끝난 면제 유저는 DB에서 삭제 처리 (자동 초기화)
-    for uid, x_time_str in exempt_users.items():
-        if now >= datetime.strptime(x_time_str, "%Y-%m-%d %H:%M:%S"):
-            db_remove_exempt_user(uid)
-
     if not active_mentions: 
         return
 
     server_channels = db_get_server_channels()
-
-    # ✨ [중복 방지 핵심 1] 이미 알람이 발송된 유저 ID를 기억할 빈 방(Set) 생성
-    # 서버들을 순회하기 전에 한 번만 선언해야 모든 서버 통틀어 1번만 발송됩니다.
     sent_user_ids = set()
 
     # 3. 각 서버별 순회하며 멘션 발송
@@ -284,14 +275,12 @@ async def send_alarm():
         # 해당 서버에 실존하는 멤버인지 한 번 더 교차 검증 및 중복 필터링
         real_server_members = []
         for uid in active_mentions:
-            # ✨ [중복 방지 핵심 2] 이미 이전 서버에서 알람이 나간 유저라면 패스!
             if uid in sent_user_ids:
                 continue
 
             member = guild.get_member(int(uid))
             if member: 
                 real_server_members.append(uid)
-                # 🚀 [기록] 알람 발송 명단에 추가했으므로 방에 유저 ID 저장!
                 sent_user_ids.add(uid)
 
         if not real_server_members:
@@ -304,7 +293,13 @@ async def send_alarm():
             f"{mentions} 세라 라이브 들어갈 시간입니다!",
             view=view
         )
-        print(f"[{datetime.now()}] 서버({guild_id})의 {current_hour}시 버튼식 알람 발송 완료 (실제 멘션: {len(real_server_members)}명)")
+
+    # ✨ [조용히 청소] 밤 00시 10분 초기화 코드는 알람 전송 루프가 다 끝난 맨 밑바닥으로 이동!
+    if current_hour == 0 and current_minute == 10:
+        try:
+            supabase.table("exempt_users").delete().neq("user_id", "0").execute()
+        except:
+            pass
 
 keep_alive()
 bot.run(TOKEN)
