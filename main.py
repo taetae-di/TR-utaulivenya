@@ -241,12 +241,15 @@ async def send_alarm():
     for user_id in alarm_users:
         is_exempt = False
         if user_id in exempt_users:
-            # 면제 시간 문자열을 파이썬 시간 객체로 변환
-            exempt_time_naive = datetime.strptime(exempt_users[user_id], "%Y-%m-%d %H:%M:%S")
-            # ⚠️ 중요: 면제 시간 시계도 한국 시간대 정보(tzinfo)를 주입하여 비교 대상과 격을 맞춥니다.
-            exempt_time = seoul_zone.localize(exempt_time_naive)
+            # 수파베이스에 기록된 면제 종료 시간 문자열 (예: "2026-06-24 23:59:00")
+            exempt_time_str = exempt_users[user_id]
             
-            if now < exempt_time:
+            # 현재 한국 시간을 수파베이스와 똑같은 포맷의 문자열로 변환합니다.
+            current_time_str = now.strftime("%Y-%m-%d %H:%M:%S")
+            
+            # 문자열끼리 비교해도 날짜와 시간순이라 크기 비교가 완벽하게 작동합니다!
+            # 현재 시간이 면제 종료 시간보다 "이전"이라면 면제 대상자입니다.
+            if current_time_str < exempt_time_str:
                 is_exempt = True
 
         if not is_exempt:
