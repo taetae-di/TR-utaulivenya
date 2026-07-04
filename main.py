@@ -226,8 +226,15 @@ async def send_alarm():
     if current_hour == 0 and current_minute == 0:
         return
 
-    # ✨ [수정] now 시계도 무조건 한국 시간(current_time_seoul) 기준으로 바인딩!
-    # 기존의 'now = datetime.now()' 구문을 지우고 아래처럼 서울 시간 시계로 대체합니다.
+    # ✨ [위치 수정 완료] 밤 00시 10분에 '새 알람을 보내기 직전'에 어제 자 낡은 명단을 조용히 청소합니다.
+    # 이렇게 해야 청소 직후 유저들이 누른 새로운 면제 신청 데이터가 새벽 내내 유지됩니다!
+    if current_hour == 0 and current_minute == 10:
+        try:
+            supabase.table("exempt_users").delete().neq("user_id", "0").execute()
+        except:
+            pass
+
+    # now 시계 한국 시간 고정
     now = current_time_seoul
 
     alarm_users = db_get_alarm_users()
@@ -241,14 +248,9 @@ async def send_alarm():
     for user_id in alarm_users:
         is_exempt = False
         if user_id in exempt_users:
-            # 수파베이스에 기록된 면제 종료 시간 문자열 (예: "2026-06-24 23:59:00")
             exempt_time_str = exempt_users[user_id]
-            
-            # 현재 한국 시간을 수파베이스와 똑같은 포맷의 문자열로 변환합니다.
             current_time_str = now.strftime("%Y-%m-%d %H:%M:%S")
             
-            # 문자열끼리 비교해도 날짜와 시간순이라 크기 비교가 완벽하게 작동합니다!
-            # 현재 시간이 면제 종료 시간보다 "이전"이라면 면제 대상자입니다.
             if current_time_str < exempt_time_str:
                 is_exempt = True
 
@@ -261,7 +263,8 @@ async def send_alarm():
     server_channels = db_get_server_channels()
     sent_user_ids = set()
 
-    # 3. 각 서버별 순회하며 멘션 발송
+    # 각 서버별로 실제 언급될 대상자 수를 미리 계산하여 정렬
+    sorted_servers = []
     for guild_id, channels in server_channels.items():
         alarm_channel_id = channels.get("alarm")
         if not alarm_channel_id:
@@ -271,20 +274,39 @@ async def send_alarm():
         if not guild:
             continue
 
-        alarm_channel = bot.get_channel(int(alarm_channel_id))
+        potential_members = []
+        for uid in active_mentions:
+            member = guild.get_member(int(uid))
+            if member:
+                potential_members.append(uid)
+        
+        sorted_servers.append({
+            "count": len(potential_members),
+            "guild_id": guild_id,
+            "channels": channels,
+            "potential_members": potential_members
+        })
+
+    # 인원이 가장 많은 서버가 맨 앞으로 오도록 정렬 (내림차순)
+    sorted_servers.sort(key=lambda x: x["count"], reverse=True)
+
+    # 3. 언급자가 많은 서버부터 순서대로 순회하며 멘션 발송
+    for server_data in sorted_servers:
+        guild_id = server_data["guild_id"]
+        channels = server_data["channels"]
+        potential_members = server_data["potential_members"]
+        
+        alarm_channel = bot.get_channel(int(channels.get("alarm")))
         if not alarm_channel:
             continue
 
-        # 해당 서버에 실존하는 멤버인지 한 번 더 교차 검증 및 중복 필터링
         real_server_members = []
-        for uid in active_mentions:
+        for uid in potential_members:
             if uid in sent_user_ids:
                 continue
-
-            member = guild.get_member(int(uid))
-            if member: 
-                real_server_members.append(uid)
-                sent_user_ids.add(uid)
+            
+            real_server_members.append(uid)
+            sent_user_ids.add(uid)
 
         if not real_server_members:
             continue
@@ -296,13 +318,5 @@ async def send_alarm():
             f"{mentions} 세라 라이브 들어갈 시간입니다!",
             view=view
         )
-
-    # ✨ [조용히 청소] 밤 00시 10분 초기화 코드는 알람 전송 루프가 다 끝난 맨 밑바닥으로 이동!
-    if current_hour == 0 and current_minute == 10:
-        try:
-            supabase.table("exempt_users").delete().neq("user_id", "0").execute()
-        except:
-            pass
-
 keep_alive()
 bot.run(TOKEN)
