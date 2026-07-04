@@ -145,10 +145,19 @@ class AlarmExemptView(discord.ui.View):
     async def exempt_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         user_id = str(interaction.user.id)
         
-        now = datetime.now()
-        exempt_until = datetime(now.year, now.month, now.day, 23, 59, 59)
+        # 🟢 [수정 핵심] 버튼 누른 현재 시간을 무조건 한국(서울) 시간 기준으로 가져옵니다!
+        seoul_zone = pytz.timezone("Asia/Seoul")
+        now_seoul = datetime.now(seoul_zone)
         
-        if now > exempt_until:
+        # 오늘 한국 날짜 기준 밤 11시 59분 59초로 타겟 설정
+        exempt_until = datetime(now_seoul.year, now_seoul.month, now_seoul.day, 23, 59, 59)
+        
+        # 시간대 정보(tzinfo)가 없는 순수한 datetime 객체끼리 비교하기 위해 
+        # 현재 시간도 시간대 정보를 제거한 naive 상태로 비교합니다.
+        now_naive = now_seoul.replace(tzinfo=None)
+        
+        # 만약 한국 시간으로 이미 밤 11시 59분이 지났다면 내일 밤까지 면제
+        if now_naive > exempt_until:
             exempt_until += timedelta(days=1)
             
         db_set_exempt_user(user_id, exempt_until.strftime("%Y-%m-%d %H:%M:%S"))
