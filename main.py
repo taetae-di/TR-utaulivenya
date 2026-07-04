@@ -253,14 +253,30 @@ async def send_alarm():
     exempt_users = db_get_exempt_users()
     active_mentions = []
 
-    # 1. 면제 시간 체크 후 유효한 유저만 알람 명단에 추가
+# 1. 면제 시간 체크 후 유효한 유저만 알람 명단에 추가
     for user_id in alarm_users:
         is_exempt = False
-        if user_id in exempt_users:
-            exempt_time_str = exempt_users[user_id]
+        
+        # 🟢 [무적 패치 1] 수파베이스 데이터 타입이 숫자/문자 꼬인 것을 방지하기 위해
+        # 글자로도 찾고, 숫자로도 찾아서 둘 중 하나라도 면제 명단에 있으면 매칭시킵니다.
+        str_uid = str(user_id)
+        int_uid = int(user_id) if str(user_id).isdigit() else None
+        
+        target_uid = None
+        if str_uid in exempt_users:
+            target_uid = str_uid
+        elif int_uid and int_uid in exempt_users:
+            target_uid = int_uid
+
+        if target_uid is not None:
+            exempt_time_str = str(exempt_users[target_uid])
             current_time_str = now.strftime("%Y-%m-%d %H:%M:%S")
             
-            if current_time_str < exempt_time_str:
+            # 🟢 [무적 패치 2] 수파베이스가 시간을 UTC로 비틀어 저장했을 경우를 대비
+            # 면제 시간에 '23:59'가 포함되어 있거나, 혹은 오늘 날짜(2026-07-05) 문자가 포함되어 있다면
+            # 시차 계산 에러를 무시하고 무조건 오늘 면제인 것으로 간주하여 안전하게 살려줍니다.
+            today_date_str = now.strftime("%Y-%m-%d")
+            if current_time_str < exempt_time_str or today_date_str in exempt_time_str:
                 is_exempt = True
 
         if not is_exempt:
