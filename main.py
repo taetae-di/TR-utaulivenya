@@ -231,17 +231,18 @@ async def send_alarm():
     if current_hour in [4, 5, 6]:
         return
 
-    # [필터 2] 00시 정각(0분)에 스케줄러가 깨운 것은 패스
-    if current_hour == 0 and current_minute == 0:
-        return
-
-    # ✨ [위치 수정 완료] 밤 00시 10분에 '새 알람을 보내기 직전'에 어제 자 낡은 명단을 조용히 청소합니다.
-    # 이렇게 해야 청소 직후 유저들이 누른 새로운 면제 신청 데이터가 새벽 내내 유지됩니다!
     if current_hour == 0 and current_minute == 10:
         try:
             supabase.table("exempt_users").delete().neq("user_id", "0").execute()
         except:
             pass
+
+    if current_minute == 10:
+        return  # 10분에는 위에서 청소만 하고, 실제 알람 발송은 하지 않고 종료합니다.
+
+    if current_minute != 30:
+        return  # 30분이 아니라면 (예: 정각 0분 등) 알람을 보내지 않고 종료합니다.
+    # ------------------------------------------------------------------
 
     # now 시계 한국 시간 고정
     now = current_time_seoul
