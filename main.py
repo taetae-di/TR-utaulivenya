@@ -143,26 +143,28 @@ class AlarmExemptView(discord.ui.View):
 
     @discord.ui.button(label="오늘 알람 제외하기 ❌", style=discord.ButtonStyle.danger, custom_id="exempt_today_btn")
     async def exempt_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # ✨ [핵심 추가] 디스코드에게 3초 시간 제한을 연장해 달라고 먼저 요청합니다.
+        # ephemeral=True를 넣어주면 유저에게 "봇이 생각하고 있습니다..."라는 메시지가 비밀 메시지로 뜹니다.
+        await interaction.response.defer(ephemeral=True)
+        
         user_id = str(interaction.user.id)
         
-        # 🟢 [수정 핵심] 버튼 누른 현재 시간을 무조건 한국(서울) 시간 기준으로 가져옵니다!
+        # 버튼 누른 현재 시간을 무조건 한국(서울) 시간 기준으로 가져옵니다.
         seoul_zone = pytz.timezone("Asia/Seoul")
         now_seoul = datetime.now(seoul_zone)
         
         # 오늘 한국 날짜 기준 밤 11시 59분 59초로 타겟 설정
         exempt_until = datetime(now_seoul.year, now_seoul.month, now_seoul.day, 23, 59, 59)
         
-        # 시간대 정보(tzinfo)가 없는 순수한 datetime 객체끼리 비교하기 위해 
-        # 현재 시간도 시간대 정보를 제거한 naive 상태로 비교합니다.
         now_naive = now_seoul.replace(tzinfo=None)
-        
-        # 만약 한국 시간으로 이미 밤 11시 59분이 지났다면 내일 밤까지 면제
         if now_naive > exempt_until:
             exempt_until += timedelta(days=1)
             
         db_set_exempt_user(user_id, exempt_until.strftime("%Y-%m-%d %H:%M:%S"))
         
-        await interaction.response.send_message(
+        # ✨ [수정] 이전에 defer()를 썼기 때문에, 답변을 보낼 때는 response.send_message 대신
+        # followups.send()를 사용해야 연장된 채널로 정상 답변이 나갑니다.
+        await interaction.followup.send(
             f"🎉 알람 제외 처리가 완료되었습니다!\n"
             f"**오늘 오후 11시 59분**까지 라이브 알람 멘션에서 제외되며, 자정 이후 다음 날 아침부터 다시 정상 작동합니다.",
             ephemeral=True
