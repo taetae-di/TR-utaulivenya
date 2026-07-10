@@ -193,7 +193,7 @@ async def on_ready():
         print(f"Command sync error: {e}")
 
     if not scheduler.running:
-        scheduler.add_job(send_alarm, "cron", hour="*", minute=32, second=0, timezone="Asia/Seoul")
+        scheduler.add_job(send_alarm, "cron", hour="*", minute=28, second=0, timezone="Asia/Seoul")
         scheduler.add_job(send_alarm, "cron", hour=0, minute=10, second=0, timezone="Asia/Seoul")
         scheduler.start()
 
@@ -242,8 +242,8 @@ async def send_alarm():
     if current_minute == 10:
         return  # 10분에는 위에서 청소만 하고, 실제 알람 발송은 하지 않고 종료합니다.
 
-    if current_minute != 32:
-        return  # 32분이 아니라면 (예: 정각 0분 등) 알람을 보내지 않고 종료합니다.
+    if current_minute != 28:
+        return  # 28분이 아니라면 (예: 정각 0분 등) 알람을 보내지 않고 종료합니다.
     # ------------------------------------------------------------------
 
     # now 시계 한국 시간 고정
@@ -343,7 +343,7 @@ async def send_alarm():
         
         view = AlarmExemptView()
         await alarm_channel.send(
-            f"{mentions} 세라 라이브 들어갈 시간입니다!",
+            f"{mentions} 옥션 후 세라 라이브 들어갈 시간입니다!",
             view=view
         )
 keep_alive()
