@@ -120,7 +120,7 @@ class AlarmView(discord.ui.View):
         
         if user_id not in current_users:
             db_add_alarm_user(user_id)
-            await interaction.response.send_message("🔔 세라 라이브 알람 신청이 완료되었습니다! (지정된 시간 정각 멘션)", ephemeral=True)
+            await interaction.response.send_message("🔔 옥션 알람 신청이 완료되었습니다! (지정된 시간 멘션)", ephemeral=True)
         else:
             await interaction.response.send_message("ℹ️ 이미 알람 신청이 되어 있습니다.", ephemeral=True)
 
@@ -131,7 +131,7 @@ class AlarmView(discord.ui.View):
         
         if user_id in current_users:
             db_remove_alarm_user(user_id)
-            await interaction.response.send_message("🔕 세라 라이브 알람 신청이 취소되었습니다.", ephemeral=True)
+            await interaction.response.send_message("🔕 옥션 알람 신청이 취소되었습니다.", ephemeral=True)
         else:
             await interaction.response.send_message("ℹ️ 현재 신청되어 있지 않습니다.", ephemeral=True)
 
@@ -166,7 +166,7 @@ class AlarmExemptView(discord.ui.View):
         # followups.send()를 사용해야 연장된 채널로 정상 답변이 나갑니다.
         await interaction.followup.send(
             f"🎉 알람 제외 처리가 완료되었습니다!\n"
-            f"**오늘 오후 11시 59분**까지 라이브 알람 멘션에서 제외되며, 자정 이후 다음 날 아침부터 다시 정상 작동합니다.",
+            f"**오늘 오후 11시 59분**까지 옥션 알람 멘션에서 제외되며, 자정부터 다시 정상 작동합니다.",
             ephemeral=True
         )
 
@@ -193,7 +193,7 @@ async def on_ready():
         print(f"Command sync error: {e}")
 
     if not scheduler.running:
-        scheduler.add_job(send_alarm, "cron", hour="*", minute=28, second=0, timezone="Asia/Seoul")
+        scheduler.add_job(send_alarm, "cron", hour="*", minute=27, second=0, timezone="Asia/Seoul")
         scheduler.add_job(send_alarm, "cron", hour=0, minute=10, second=0, timezone="Asia/Seoul")
         scheduler.start()
 
@@ -216,7 +216,7 @@ async def setup_recruit_channel(interaction: discord.Interaction, channel: disco
     
     await interaction.response.send_message(f"⚙️ 알람 모집 채널이 {channel.mention}으로 설정되었습니다. 버튼을 생성합니다.", ephemeral=True)
     await channel.send(
-        "🔔 **[세라 라이브 알람 신청]**\n아래 버튼을 눌러 알람 명단에 등록하거나 취소할 수 있습니다!",
+        "🔔 **[옥션 알람 신청]**\n아래 버튼을 눌러 알람 명단에 등록하거나 취소할 수 있습니다!",
         view=AlarmView()
     )
 
@@ -242,8 +242,8 @@ async def send_alarm():
     if current_minute == 10:
         return  # 10분에는 위에서 청소만 하고, 실제 알람 발송은 하지 않고 종료합니다.
 
-    if current_minute != 28:
-        return  # 28분이 아니라면 (예: 정각 0분 등) 알람을 보내지 않고 종료합니다.
+    if current_minute != 27:
+        return  # 27분이 아니라면 (예: 정각 0분 등) 알람을 보내지 않고 종료합니다.
     # ------------------------------------------------------------------
 
     # now 시계 한국 시간 고정
@@ -343,7 +343,7 @@ async def send_alarm():
         
         view = AlarmExemptView()
         await alarm_channel.send(
-            f"{mentions} 옥션 후 세라 라이브 들어갈 시간입니다!",
+            f"{mentions} 1분 후 옥션 들어갈 시간입니다!",
             view=view
         )
 keep_alive()
