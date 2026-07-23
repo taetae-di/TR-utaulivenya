@@ -42,22 +42,25 @@ scheduler = AsyncIOScheduler(timezone="Asia/Seoul")
 
 # --- [Supabase 전용 데이터 조작 함수 정의] ---
 
-def db_get_alarm_users() -> set:
+def db_get_alarm_users() -> list:
+    """[{ 'user_id': '...', 'guild_id': '...' }, ...] 형태의 리스트 반환"""
     try:
-        res = supabase.table("alarm_users").select("user_id").execute()
-        return {row["user_id"] for row in res.data}
+        res = supabase.table("alarm_users").select("user_id", "guild_id").execute()
+        return res.data if res.data else []
     except Exception as e:
         print(f"DB Error (get_alarm_users): {e}")
-        return set()
+        return []
 
-def db_add_alarm_user(user_id: str):
+def db_add_alarm_user(user_id: str, guild_id: str):
+    """신청한 유저 ID와 서버 ID를 함께 저장"""
     try:
-        supabase.table("alarm_users").upsert({"user_id": user_id}).execute()
+        supabase.table("alarm_users").upsert({"user_id": user_id, "guild_id": guild_id}).execute()
     except Exception as e: print(f"DB Error (add_alarm_user): {e}")
 
-def db_remove_alarm_user(user_id: str):
+def db_remove_alarm_user(user_id: str, guild_id: str):
+    """특정 서버에서 신청했던 알람만 선택 삭제"""
     try:
-        supabase.table("alarm_users").delete().eq("user_id", user_id).execute()
+        supabase.table("alarm_users").delete().eq("user_id", user_id).eq("guild_id", guild_id).execute()
     except Exception as e: print(f"DB Error (remove_alarm_user): {e}")
 
 def db_get_exempt_users() -> dict:
@@ -116,24 +119,31 @@ class AlarmView(discord.ui.View):
     @discord.ui.button(label="알람 신청하기 ⭕", style=discord.ButtonStyle.green, custom_id="btn_register")
     async def register_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         user_id = str(interaction.user.id)
-        current_users = db_get_alarm_users()
+        guild_id = str(interaction.guild_id) # 👈 해당 서버 ID 가져오기
         
-        if user_id not in current_users:
-            db_add_alarm_user(user_id)
-            await interaction.response.send_message("🔔 옥션 알람 신청이 완료되었습니다! (지정된 시간 멘션)", ephemeral=True)
+        current_alarm_list = db_get_alarm_users()
+        # 해당 서버에서 이미 신청했는지 검사
+        is_already_registered = any(row["user_id"] == user_id and row["guild_id"] == guild_id for row in current_alarm_list)
+        
+        if not is_already_registered:
+            db_add_alarm_user(user_id, guild_id)
+            await interaction.response.send_message("🔔 이 서버에서의 옥션+라이브 알람 신청이 완료되었습니다!", ephemeral=True)
         else:
-            await interaction.response.send_message("ℹ️ 이미 알람 신청이 되어 있습니다.", ephemeral=True)
+            await interaction.response.send_message("ℹ️ 이 서버에 이미 알람 신청이 되어 있습니다.", ephemeral=True)
 
     @discord.ui.button(label="알람 취소하기 ❌", style=discord.ButtonStyle.red, custom_id="btn_cancel")
     async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         user_id = str(interaction.user.id)
-        current_users = db_get_alarm_users()
+        guild_id = str(interaction.guild_id) # 👈 해당 서버 ID 가져오기
         
-        if user_id in current_users:
-            db_remove_alarm_user(user_id)
-            await interaction.response.send_message("🔕 옥션 알람 신청이 취소되었습니다.", ephemeral=True)
+        current_alarm_list = db_get_alarm_users()
+        is_registered = any(row["user_id"] == user_id and row["guild_id"] == guild_id for row in current_alarm_list)
+        
+        if is_registered:
+            db_remove_alarm_user(user_id, guild_id)
+            await interaction.response.send_message("🔕 이 서버에서의 옥션+라이브 알람 신청이 취소되었습니다.", ephemeral=True)
         else:
-            await interaction.response.send_message("ℹ️ 현재 신청되어 있지 않습니다.", ephemeral=True)
+            await interaction.response.send_message("ℹ️ 이 서버에는 알람 신청이 되어있지 않습니다.", ephemeral=True)
 
 
 # 🔘 [버튼 UI: 오늘 알람 제외]
@@ -289,11 +299,41 @@ async def send_alarm():
         return
 
     server_channels = db_get_server_channels()
-    sent_user_ids = set()
+   # 2. 각 서버별로 해당 서버에 알람을 신청한 유저들을 분류합니다.
+    # alarm_data 구조: [{'user_id': '123', 'guild_id': '456'}, ...]
+    guild_to_users = {}
 
-    # 각 서버별로 실제 언급될 대상자 수를 미리 계산하여 정렬
-    sorted_servers = []
-    for guild_id, channels in server_channels.items():
+    for row in alarm_data:
+        uid = str(row["user_id"])
+        gid = str(row["guild_id"])
+
+        # 면제 상태 체크
+        is_exempt = False
+        int_uid = int(uid) if uid.isdigit() else None
+        target_uid = uid if uid in exempt_users else (int_uid if int_uid in exempt_users else None)
+
+        if target_uid is not None:
+            exempt_time_str = str(exempt_users[target_uid])
+            current_time_str = now.strftime("%Y-%m-%d %H:%M:%S")
+            today_date_str = now.strftime("%Y-%m-%d")
+            if current_time_str < exempt_time_str or today_date_str in exempt_time_str:
+                is_exempt = True
+
+        # 면제자가 아니면 해당 서버의 알람 대상자로 추가
+        if not is_exempt:
+            if gid not in guild_to_users:
+                guild_to_users[gid] = []
+            guild_to_users[gid].append(uid)
+
+    # 3. 각 서버를 순회하며 해당 서버에서 신청한 유저들에게만 알람을 발송합니다.
+    for guild_id, user_ids in guild_to_users.items():
+        if not user_ids:
+            continue
+
+        channels = server_channels.get(guild_id)
+        if not channels:
+            continue
+
         alarm_channel_id = channels.get("alarm")
         if not alarm_channel_id:
             continue
@@ -302,49 +342,27 @@ async def send_alarm():
         if not guild:
             continue
 
-        potential_members = []
-        for uid in active_mentions:
-            member = guild.get_member(int(uid))
-            if member:
-                potential_members.append(uid)
-        
-        sorted_servers.append({
-            "count": len(potential_members),
-            "guild_id": guild_id,
-            "channels": channels,
-            "potential_members": potential_members
-        })
-
-    # 인원이 가장 많은 서버가 맨 앞으로 오도록 정렬 (내림차순)
-    sorted_servers.sort(key=lambda x: x["count"], reverse=True)
-
-    # 3. 언급자가 많은 서버부터 순서대로 순회하며 멘션 발송
-    for server_data in sorted_servers:
-        guild_id = server_data["guild_id"]
-        channels = server_data["channels"]
-        potential_members = server_data["potential_members"]
-        
-        alarm_channel = bot.get_channel(int(channels.get("alarm")))
+        alarm_channel = bot.get_channel(int(alarm_channel_id))
         if not alarm_channel:
             continue
 
+        # 실제로 그 디스코드 서버에 존재하는 멤버인지 확인
         real_server_members = []
-        for uid in potential_members:
-            if uid in sent_user_ids:
-                continue
-            
-            real_server_members.append(uid)
-            sent_user_ids.add(uid)
+        for uid in user_ids:
+            member = guild.get_member(int(uid))
+            if member:
+                real_server_members.append(uid)
 
         if not real_server_members:
             continue
 
         mentions = " ".join([f"<@{uid}>" for uid in real_server_members])
-        
         view = AlarmExemptView()
+        
         await alarm_channel.send(
-            f"{mentions} 1분 후 옥션 들어갈 시간입니다!",
+            f"{mentions} 1분 후 옥션, 라이브 들어갈 시간입니다!",
             view=view
         )
+        
 keep_alive()
 bot.run(TOKEN)
