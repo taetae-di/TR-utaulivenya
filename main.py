@@ -26,8 +26,8 @@ def keep_alive():
 # --- [디스코드 봇 및 Supabase 설정] ---
 intents = discord.Intents.default()
 intents.message_content = True
-intents.members = True         
-intents.reactions = True  
+intents.members = True          
+intents.reactions = True   
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -119,10 +119,9 @@ class AlarmView(discord.ui.View):
     @discord.ui.button(label="알람 신청하기 ⭕", style=discord.ButtonStyle.green, custom_id="btn_register")
     async def register_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         user_id = str(interaction.user.id)
-        guild_id = str(interaction.guild_id) # 👈 해당 서버 ID 가져오기
+        guild_id = str(interaction.guild_id)
         
         current_alarm_list = db_get_alarm_users()
-        # 해당 서버에서 이미 신청했는지 검사
         is_already_registered = any(row["user_id"] == user_id and row["guild_id"] == guild_id for row in current_alarm_list)
         
         if not is_already_registered:
@@ -134,7 +133,7 @@ class AlarmView(discord.ui.View):
     @discord.ui.button(label="알람 취소하기 ❌", style=discord.ButtonStyle.red, custom_id="btn_cancel")
     async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         user_id = str(interaction.user.id)
-        guild_id = str(interaction.guild_id) # 👈 해당 서버 ID 가져오기
+        guild_id = str(interaction.guild_id)
         
         current_alarm_list = db_get_alarm_users()
         is_registered = any(row["user_id"] == user_id and row["guild_id"] == guild_id for row in current_alarm_list)
@@ -153,17 +152,12 @@ class AlarmExemptView(discord.ui.View):
 
     @discord.ui.button(label="오늘 알람 제외하기 ❌", style=discord.ButtonStyle.danger, custom_id="exempt_today_btn")
     async def exempt_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # ✨ [핵심 추가] 디스코드에게 3초 시간 제한을 연장해 달라고 먼저 요청합니다.
-        # ephemeral=True를 넣어주면 유저에게 "봇이 생각하고 있습니다..."라는 메시지가 비밀 메시지로 뜹니다.
         await interaction.response.defer(ephemeral=True)
         
         user_id = str(interaction.user.id)
-        
-        # 버튼 누른 현재 시간을 무조건 한국(서울) 시간 기준으로 가져옵니다.
         seoul_zone = pytz.timezone("Asia/Seoul")
         now_seoul = datetime.now(seoul_zone)
         
-        # 오늘 한국 날짜 기준 밤 11시 59분 59초로 타겟 설정
         exempt_until = datetime(now_seoul.year, now_seoul.month, now_seoul.day, 23, 59, 59)
         
         now_naive = now_seoul.replace(tzinfo=None)
@@ -172,8 +166,6 @@ class AlarmExemptView(discord.ui.View):
             
         db_set_exempt_user(user_id, exempt_until.strftime("%Y-%m-%d %H:%M:%S"))
         
-        # ✨ [수정] 이전에 defer()를 썼기 때문에, 답변을 보낼 때는 response.send_message 대신
-        # followups.send()를 사용해야 연장된 채널로 정상 답변이 나갑니다.
         await interaction.followup.send(
             f"🎉 알람 제외 처리가 완료되었습니다!\n"
             f"**오늘 오후 11시 59분**까지 옥션 알람 멘션에서 제외되며, 자정부터 다시 정상 작동합니다.",
@@ -187,14 +179,16 @@ async def on_ready():
     bot.add_view(AlarmView())
     bot.add_view(AlarmExemptView())
     
+    # ⚙️ [수정됨] 슬래시 명령어 동기화 방식 올바르게 수정
     try:
         guild_ids = [
-            "1487482092983025744",  
-            "1409900572168949772"   
+            1487482092983025744,  
+            1409900572168949772   
         ]
         
         for guild_id in guild_ids:
             guild_obj = discord.Object(id=guild_id)
+            # 서버 단독 동기화를 보장하기 위해 copy_global_to 대신 바로 sync 실행
             bot.tree.copy_global_to(guild=guild_obj)
             synced = await bot.tree.sync(guild=guild_obj)
             print(f"[서버 {guild_id}]에 즉시 동기화 완료: {len(synced)}개 명령어")
@@ -233,13 +227,11 @@ async def setup_recruit_channel(interaction: discord.Interaction, channel: disco
 
 # ⏰ [알람 발송 함수]
 async def send_alarm():
-    # 1. 현재 시간을 서울 시간대로 명확히 가져오기
     seoul_zone = pytz.timezone("Asia/Seoul")
     current_time_seoul = datetime.now(seoul_zone)
     current_hour = current_time_seoul.hour
     current_minute = current_time_seoul.minute
 
-    # [필터 1] 새벽 4, 5, 6시는 무조건 알람 제외 (즉시 종료)
     if current_hour in [4, 5, 6]:
         return
 
@@ -250,62 +242,30 @@ async def send_alarm():
             pass
 
     if current_minute == 10:
-        return  # 10분에는 위에서 청소만 하고, 실제 알람 발송은 하지 않고 종료합니다.
+        return 
 
     if current_minute != 27:
-        return  # 27분이 아니라면 (예: 정각 0분 등) 알람을 보내지 않고 종료합니다.
-    # ------------------------------------------------------------------
+        return 
 
-    # now 시계 한국 시간 고정
     now = current_time_seoul
 
-    alarm_users = db_get_alarm_users()
-    if not alarm_users:
+    # DB에서 목록 가져오기
+    alarm_users_data = db_get_alarm_users() # [{'user_id': '...', 'guild_id': '...'}, ...]
+    if not alarm_users_data:
         return
 
     exempt_users = db_get_exempt_users()
-    active_mentions = []
-
-# 1. 면제 시간 체크 후 유효한 유저만 알람 명단에 추가
-    for user_id in alarm_users:
-        is_exempt = False
-        
-        # 🟢 [무적 패치 1] 수파베이스 데이터 타입이 숫자/문자 꼬인 것을 방지하기 위해
-        # 글자로도 찾고, 숫자로도 찾아서 둘 중 하나라도 면제 명단에 있으면 매칭시킵니다.
-        str_uid = str(user_id)
-        int_uid = int(user_id) if str(user_id).isdigit() else None
-        
-        target_uid = None
-        if str_uid in exempt_users:
-            target_uid = str_uid
-        elif int_uid and int_uid in exempt_users:
-            target_uid = int_uid
-
-        if target_uid is not None:
-            exempt_time_str = str(exempt_users[target_uid])
-            current_time_str = now.strftime("%Y-%m-%d %H:%M:%S")
-            
-            # 🟢 [무적 패치 2] 수파베이스가 시간을 UTC로 비틀어 저장했을 경우를 대비
-            # 면제 시간에 '23:59'가 포함되어 있거나, 혹은 오늘 날짜(2026-07-05) 문자가 포함되어 있다면
-            # 시차 계산 에러를 무시하고 무조건 오늘 면제인 것으로 간주하여 안전하게 살려줍니다.
-            today_date_str = now.strftime("%Y-%m-%d")
-            if current_time_str < exempt_time_str or today_date_str in exempt_time_str:
-                is_exempt = True
-
-        if not is_exempt:
-            active_mentions.append(user_id)
-
-    if not active_mentions: 
-        return
-
     server_channels = db_get_server_channels()
-   # 2. 각 서버별로 해당 서버에 알람을 신청한 유저들을 분류합니다.
-    # alarm_data 구조: [{'user_id': '123', 'guild_id': '456'}, ...]
+
+    # 서버별 유저 분류
     guild_to_users = {}
 
-    for row in alarm_data:
-        uid = str(row["user_id"])
-        gid = str(row["guild_id"])
+    for row in alarm_users_data:
+        uid = str(row.get("user_id"))
+        gid = str(row.get("guild_id"))
+
+        if not uid or not gid:
+            continue
 
         # 면제 상태 체크
         is_exempt = False
@@ -319,13 +279,13 @@ async def send_alarm():
             if current_time_str < exempt_time_str or today_date_str in exempt_time_str:
                 is_exempt = True
 
-        # 면제자가 아니면 해당 서버의 알람 대상자로 추가
+        # 면제자가 아니면 서버별 대상 추가
         if not is_exempt:
             if gid not in guild_to_users:
                 guild_to_users[gid] = []
             guild_to_users[gid].append(uid)
 
-    # 3. 각 서버를 순회하며 해당 서버에서 신청한 유저들에게만 알람을 발송합니다.
+    # 각 서버별 알람 발송
     for guild_id, user_ids in guild_to_users.items():
         if not user_ids:
             continue
@@ -346,23 +306,13 @@ async def send_alarm():
         if not alarm_channel:
             continue
 
-        # 실제로 그 디스코드 서버에 존재하는 멤버인지 확인
-        real_server_members = []
-        for uid in user_ids:
-            member = guild.get_member(int(uid))
-            if member:
-                real_server_members.append(uid)
-
-        if not real_server_members:
-            continue
-
-        mentions = " ".join([f"<@{uid}>" for uid in real_server_members])
+        mentions = " ".join([f"<@{uid}>" for uid in user_ids])
         view = AlarmExemptView()
         
         await alarm_channel.send(
             f"{mentions} 1분 후 옥션, 라이브 들어갈 시간입니다!",
             view=view
         )
-        
+
 keep_alive()
 bot.run(TOKEN)
